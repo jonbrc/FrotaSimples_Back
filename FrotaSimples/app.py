@@ -74,7 +74,7 @@ def criar_usuario():
     finally:
         conn.close()
     
-## CRIAÇÃO DE FUNCIONÁRIOS
+## CADASTRO DE FUNCIONÁRIOS
 @app.route('/funcionarios', methods=['POST'])
 def criar_funcionario():
     
@@ -122,6 +122,61 @@ def criar_funcionario():
         
     finally:
         conn.close()
+
+## CADASTRO DE VEÍCULOS
+@app.route('/veiculos', methods=['POST'])
+def cadastrar_veiculo():
+    data = request.get_json()
+
+    if not data or 'modelo' not in data or 'marca' not in data or 'ano' not in data or 'placa' not in data:
+        return jsonify({"erro": "Dados incompletos (modelo, marca, ano, placa são obrigatórios)"}), 400
+    
+    modelo = data['modelo']
+    marca = data['marca']
+    ano = data['ano']
+    placa = data['placa'].upper() 
+    
+    conn = get_db_connection()
+
+    if conn is None:
+        return jsonify({"erro": "Falha na conexão com o banco de dados"}), 503
+    
+    try:
+        with conn.cursor() as cur: 
+            sql = """
+                INSERT INTO veiculos (modelo, marca, ano, placa)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id;
+            """
+            params = (modelo, marca, ano, placa)
+            cur.execute(sql, params)
+            
+            novo_id = cur.fetchone()[0]
+            
+            conn.commit() 
+
+            return jsonify({
+                "mensagem": "Veículo cadastrado com sucesso",
+                "id": novo_id,
+                "placa": placa
+            }), 201
+
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback() 
+        return jsonify({"erro": "A placa já está em uso"}), 409
+    
+    except psycopg2.errors.CheckViolation as e:
+        conn.rollback() 
+        return jsonify({"erro": "O ano do veículo não é válido (deve ser >= 1900)"}), 400
+        
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"Erro no banco de dados: {e}") 
+        return jsonify({"erro": "Erro interno ao cadastrar veículo."}), 500
+    
+    finally:
+        conn.close()
+    
  
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
