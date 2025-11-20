@@ -108,6 +108,64 @@ def listar_usuarios():
     finally:
         conn.close()
 
+## LOGIN DE USUÁRIOS (POST)
+@app.route('/login', methods=['POST'])
+def login_usuario():
+    data = request.get_json()
+
+    # 1. Validação de campos
+    if not data or 'email' not in data or 'senha' not in data:
+        return jsonify({"erro": "Email e senha são obrigatórios"}), 400
+    
+    email = data['email']
+    senha_plana = data['senha']
+    
+    conn = get_db_connection()
+
+    if conn is None:
+        return jsonify({"erro": "Falha na conexão com o banco de dados"}), 503
+
+    try:
+        with conn.cursor() as cur:
+            # 2. Busca o hash da senha e outros dados importantes pelo email
+            sql = """
+                SELECT id, nome, email, senha_hash, funcionario_id 
+                FROM usuarios 
+                WHERE email = %s;
+            """
+            cur.execute(sql, (email,))
+            user_record = cur.fetchone()
+
+            if user_record:
+                # 3. Mapeia o registro para um dicionário
+                column_names = [desc[0] for desc in cur.description]
+                user_data = dict(zip(column_names, user_record))
+                
+                # 4. Verifica a senha
+                if check_password_hash(user_data['senha_hash'], senha_plana):
+                    # Autenticação bem-sucedida
+                    
+                    # 5. Remove o hash da resposta por segurança
+                    del user_data['senha_hash'] 
+                    
+                    return jsonify({
+                        "mensagem": "Login bem-sucedido",
+                        "usuario": user_data
+                    }), 200
+                else:
+                    # Senha incorreta
+                    return jsonify({"erro": "Email ou senha incorretos"}), 401
+            else:
+                # Usuário não encontrado
+                return jsonify({"erro": "Email ou senha incorretos"}), 401
+
+    except psycopg2.Error as e:
+        print(f"Erro no banco de dados durante o login: {e}") 
+        return jsonify({"erro": "Erro interno ao tentar login."}), 500
+        
+    finally:
+        conn.close()
+
 # =============================================================================
 # ROTAS DE FUNCIONÁRIOS
 # =============================================================================
@@ -273,7 +331,7 @@ def listar_veiculos():
 # ROTAS DE EMPRÉSTIMOS
 # =============================================================================
 
-## REGISTRAR EMPRÉSTIMO
+## REGISTRAR EMPRÉSTIMO (POST)
 @app.route('/emprestimos', methods=['POST'])
 def registrar_emprestimo():
     data = request.get_json()
@@ -333,7 +391,7 @@ def registrar_emprestimo():
     finally:
         conn.close()
 
-## LISTAR EMPRÉSTIMOS
+## LISTAR EMPRÉSTIMOS (GET)
 @app.route('/emprestimos', methods=['GET'])
 def listar_emprestimos():
     conn = get_db_connection()
