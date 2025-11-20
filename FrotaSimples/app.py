@@ -77,7 +77,51 @@ def criar_usuario():
 ## CRIAÇÃO DE FUNCIONÁRIOS
 @app.route('/funcionarios', methods=['POST'])
 def criar_funcionario():
-    'teste'
     
+    data = request.get_json()
+    if not data or 'nome' not in data or 'matricula' not in data or 'cargo' not in data:
+         return jsonify({"erro": "Dados incompletos (nome, matricula, cargo)"}), 400
+    
+    nome = data['nome']
+    matricula = data['matricula']
+    cargo = data['cargo']
+    
+    conn = get_db_connection()
+
+    if conn is None:
+        return jsonify({"erro": "Falha na conexão com o banco de dados"}), 503
+    
+    try:
+        with conn.cursor() as cur: 
+            sql = """
+                INSERT INTO funcionarios (nome, matricula, cargo)
+                VALUES (%s, %s, %s)
+                RETURNING id;
+            """
+            params = (nome, matricula, cargo)
+            cur.execute(sql, params)
+            
+            novo_id = cur.fetchone()[0]
+            
+            conn.commit() 
+
+            return jsonify({
+                "mensagem": "Funcionário cadastrado com sucesso",
+                "id": novo_id,
+                "nome": nome
+            }), 201
+
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback() 
+        return jsonify({"erro": "A matrícula já está em uso"}), 409
+        
+    except psycopg2.Error as e:
+        conn.rollback()
+        print(f"Erro no banco de dados: {e}") 
+        return jsonify({"erro": "Erro interno ao criar usuário."}), 500
+        
+    finally:
+        conn.close()
+ 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
